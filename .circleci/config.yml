@@ -202,7 +202,7 @@ workflows:
                 filters:
                       branches:
                           only: 
-                            - hs_poc
+                            - master
                             - beanstalk-poc
             - install_dependencies:
                   requires:
