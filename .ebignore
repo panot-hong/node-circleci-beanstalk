@@ -1,0 +1,16 @@
+*.log
+.git/
+backup/
+node_modules/
+.DS_Store
+*.env*
+.idea
+.tmp/
+npm-debug.log
+__test__/
+.vagrant
+.vscode/
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml

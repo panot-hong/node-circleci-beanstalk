@@ -1,0 +1,257 @@
+version: 2
+# https://discuss.circleci.com/t/only-notify-for-some-branches/10244
+experimental:
+    notify:
+        branches:
+            only:
+                - master
+
+defaults: &defaults
+    working_directory: ~/project
+    docker:
+        - image: panot/circleci-awsebcli-node:10.16.0-browsers
+
+restore_checkout: &restore_checkout
+    restore_cache:
+        keys:
+            - v1-repo-{{ .Environment.CIRCLE_SHA1 }}
+
+restore_dependencies: &restore_dependencies
+    restore_cache:
+        name: Restore NPM dependency
+        key: v1-dependencies-{{ checksum "package-lock.json" }}
+
+# install_ebcli: &install_ebcli
+#     # - run:
+#     #     name: Install python3-pip and aws eb cli 
+#     #     working_directory: /
+#     #     command: |
+#     #         sudo apt-get -y -qq update
+#     #         sudo apt-get install python3-pip python3.6-dev build-essential
+#     #         sudo pip3 install awsebcli --upgrade
+#     - run:
+#           name: Install Python
+#           command: |
+#             sudo apt-get -y -qq update
+#             sudo apt-get -y -qq install python3.4-dev
+#             echo 'export PATH=/root/.local/bin/:$PATH' >> $BASH_ENV
+#             echo 'export PATH=/home/circleci/.local/bin/:$PATH' >> $BASH_ENV
+#     - run:
+#           name: Install pip
+#           command: |
+#             curl -O https://bootstrap.pypa.io/get-pip.py
+#             python3.4 get-pip.py --user
+#     - run:
+#           name: Install AWS EB CLI & S3 CLI
+#           command: |
+#             sudo pip install awsebcli --upgrade --user
+#            # pip install awscli --upgrade --user            
+
+jobs:
+    checkout_code:
+        <<: *defaults
+        steps:
+            - checkout
+            - save_cache:
+                  key: v1-repo-{{ .Environment.CIRCLE_SHA1 }}
+                  paths:
+                      - .
+
+    install_dependencies:
+        <<: *defaults
+        steps:
+            - <<: *restore_checkout
+            - <<: *restore_dependencies
+            - run:
+                  name: Avoid hosts unknown for github
+                  command: mkdir ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
+            - run: make install
+            - save_cache:
+                  name: Save NPM dependency cache
+                  key: v1-dependencies-{{ checksum "package-lock.json" }}
+                  paths:
+                      - node_modules
+            - persist_to_workspace:
+                  root: .
+                  paths:
+                      - .
+
+    lint:
+        <<: *defaults
+        steps:
+            - attach_workspace:
+                  at: .
+            - run: npm run eslint
+
+    unit_test:
+        <<: *defaults
+        steps:
+            - attach_workspace:
+                  at: .
+            - run: npm t
+
+    build:
+        <<: *defaults
+        steps:
+            - attach_workspace:
+                  at: .
+            - run: make build
+            - persist_to_workspace:
+                  root: .
+                  paths:
+                      - built
+                      - public
+                      #- ./fastly-ip-addresses.json
+
+    e2e_test:
+        <<: *defaults
+        steps:
+            - attach_workspace:
+                  at: .
+            - run:
+                  name: Update hosts with local.scout.asia
+                  command: echo 127.0.0.1 local.scout.asia | sudo tee -a /etc/hosts;
+            - run:
+                  name: Cross-browser tests - run test server in background
+                  command: npm run serve:test
+                  background: true
+            - run:
+                  name: Cross-browser tests - run WireMock server in background
+                  command: npm run wiremock
+                  background: true
+            - run:
+                  name: Cross-browser tests - run BrowserStack tests
+                  command: npm run browserstack
+            - run:
+                  name: Cross-browser tests - upload BrowserStack-generated screenshots to S3
+                  command: make xbrowser-post-test-run
+                  when: always
+
+    # check_API_versions:
+    #     <<: *defaults
+    #     steps:
+    #         - attach_workspace:
+    #               at: .
+    #         - run:
+    #               name: Enforce latest/prod env API version disparity
+    #               command: npm run enforce-api-version-disparity
+
+    # deploy:
+    #     <<: *defaults
+    #     steps:
+    #         - attach_workspace:
+    #               at: .
+    #         - run: bash .circleci/heroku.sh
+    #         - run:
+    #               name: Setting up Heroku credentials
+    #               command: |
+    #                   cat >~/.netrc <<EOF
+    #                     machine api.heroku.com
+    #                       login $HEROKU_LOGIN
+    #                       password $HEROKU_AUTH_TOKEN
+    #                     machine git.heroku.com
+    #                       login $HEROKU_LOGIN
+    #                       password $HEROKU_AUTH_TOKEN
+    #                   EOF
+    #         - run:
+    #               name: Modifying netrc permissions for Heroku CLI
+    #               command: chmod 600 ~/.netrc # Heroku cli complains about permissions without this
+    #         - run:
+    #               name: Deploy to Heroku
+    #               command: make deploy-latest
+    # deploy_test:
+    #     <<: *defaults
+    #     steps:
+    #         - attach_workspace:
+    #               at: .
+    #         - run: bash .circleci/heroku.sh
+    #         - run:
+    #               name: Setting up Heroku credentials
+    #               command: |
+    #                   cat >~/.netrc <<EOF
+    #                     machine api.heroku.com
+    #                       login $HEROKU_LOGIN
+    #                       password $HEROKU_AUTH_TOKEN
+    #                     machine git.heroku.com
+    #                       login $HEROKU_LOGIN
+    #                       password $HEROKU_AUTH_TOKEN
+    #                   EOF
+    #         - run:
+    #               name: Modifying netrc permissions for Heroku CLI
+    #               command: chmod 600 ~/.netrc # Heroku cli complains about permissions without this
+    #         - run:
+    #               name: Deploy to Heroku
+    #               command: make deploy-test
+    deploy:
+        <<: *defaults
+        steps:
+            - attach_workspace:
+                  at: .
+            # Install AWS cli
+            #- <<: *install_ebcli
+            # Deploy to the Elastic Beanstalk corresponding to the current branch
+            - run:
+                name: Deploy on AWS EB
+                command: make deploy-latest
+
+workflows:
+    version: 2
+    build:
+        jobs:
+            - checkout_code:
+                filters:
+                      branches:
+                          only: 
+                            - hs_poc
+                            - beanstalk-poc
+            - install_dependencies:
+                  requires:
+                      - checkout_code
+                  filters:
+                      branches:
+                          only: 
+                            - hs_poc
+                            - beanstalk-poc
+            - lint:
+                  requires:
+                      - install_dependencies
+                  filters:
+                      branches:
+                          only: 
+                            - hs_poc
+            - unit_test:
+                  requires:
+                      - install_dependencies
+                  filters:
+                      branches:
+                          only: 
+                            - hs_poc
+            - build:
+                  requires:
+                      - install_dependencies
+                  filters:
+                      branches:
+                          only: 
+                            - hs_poc
+                            - beanstalk-poc
+            # - check_API_versions:
+            #       requires:
+            #           - install_dependencies
+            #       filters:
+            #           branches:
+            #               only: master
+            # - e2e_test:
+            #       requires:
+            #           - build
+            #       filters:
+            #           branches:
+            #               only: 
+            #                 - master
+            #                 - hs_poc
+            - deploy:
+                  requires:
+                      - build
+                    #   - check_API_versions
+                  filters:
+                      branches:
+                          only: master
