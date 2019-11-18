@@ -18,3 +18,4 @@ __test__/__webdriver__/screenshots/diff
 .elasticbeanstalk/*
 !.elasticbeanstalk/*.cfg.yml
 !.elasticbeanstalk/*.global.yml
+!.elasticbeanstalk/config.yml
