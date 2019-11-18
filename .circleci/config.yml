@@ -67,7 +67,7 @@ jobs:
             - run:
                   name: Avoid hosts unknown for github
                   command: mkdir ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" > ~/.ssh/config
-            - run: make install
+            - run: npm install
             - save_cache:
                   name: Save NPM dependency cache
                   key: v1-dependencies-{{ checksum "package-lock.json" }}
