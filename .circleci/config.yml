@@ -212,7 +212,7 @@ workflows:
                   filters:
                       branches:
                           only: 
-                            - hs_poc
+                            - master
                             - beanstalk-poc
             - lint:
                   requires:
@@ -252,7 +252,7 @@ workflows:
             #                 - hs_poc
             - deploy:
                   requires:
-                      - checkout_code
+                      - install_dependencies
                     #  - build
                     #   - check_API_versions
                   filters:
