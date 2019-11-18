@@ -250,6 +250,7 @@ workflows:
             #                 - hs_poc
             - deploy:
                   requires:
+                      - checkout_code
                     #  - build
                     #   - check_API_versions
                   filters:
