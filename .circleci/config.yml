@@ -9,6 +9,11 @@ experimental:
 defaults: &defaults
     working_directory: ~/project
     docker:
+        - image: circleci/node:10.16.0-browsers
+
+eb_node_workspace: &eb_node_workspace
+    working_directory: ~/project
+    docker:
         - image: panot/circleci-awsebcli-node:10.16.0-browsers
 
 restore_checkout: &restore_checkout
@@ -185,7 +190,7 @@ jobs:
     #               name: Deploy to Heroku
     #               command: make deploy-test
     deploy:
-        <<: *defaults
+        <<: *eb_node_workspace
         steps:
             - attach_workspace:
                   at: .
